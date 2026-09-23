@@ -204,3 +204,34 @@ export async function runChunks(key, state, chunks, buildQuestions, opts = {}) {
   await Promise.all(Array.from({ length: Math.min(concurrency, chunks.length) }, worker))
   return results.flat()
 }
+
+/**
+ * Strips anything that looks like a credential before text leaves this machine.
+ *
+ * The watchdog sends a diff summary to a third party, so this runs on every byte of it.
+ * Order matters: the labelled-assignment rule runs first so `TOKEN=<short>` is caught even
+ * when the value is too short or too low-entropy for the generic rule to see it.
+ */
+export function redact(text) {
+  if (!text) return text
+  let n = 0
+  const hit = () => { n++; return '<redacted>' }
+  const out = String(text)
+    // labelled assignments: KEY=..., "password": "...", -H 'Authorization: Bearer ...'
+    .replace(/((?:api[_-]?key|secret|token|password|passwd|auth|bearer|credential)[a-z_]*)(["']?\s*[:=]\s*)(["']?)([^\s"',;)]{4,})\3/gi,
+      (_, k, sep, q, _v) => `${k}${sep}${q}${hit()}${q}`)
+    .replace(/(-H\s+["'][^"']*:\s*)([^"']+)(["'])/gi, (_, h, _v, q) => `${h}${hit()}${q}`)
+    // provider-shaped keys
+    .replace(/\bsk-[A-Za-z0-9_-]{12,}/g, hit)
+    .replace(/\b(?:ghp|gho|ghu|ghs)_[A-Za-z0-9]{16,}/g, hit)
+    .replace(/\bgithub_pat_[A-Za-z0-9_]{20,}/g, hit)
+    .replace(/\bAKIA[0-9A-Z]{16}\b/g, hit)
+    .replace(/\bxox[baprs]-[A-Za-z0-9-]{8,}/g, hit)
+    .replace(/\bAIza[A-Za-z0-9_-]{20,}/g, hit)
+    // JWTs and URLs carrying inline credentials
+    .replace(/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, hit)
+    .replace(/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@:]+:[^\s/@]+@/gi, (_, s) => `${s}${hit()}@`)
+    // anything left that is long and high-entropy enough to be a key
+    .replace(/\b(?=[A-Za-z0-9_-]*\d)(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9_-]{32,}\b/g, hit)
+  return { text: out, redactions: n }
+}
