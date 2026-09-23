@@ -61,5 +61,45 @@ for (const s of keepers) ok(`leaves ordinary code alone: ${s.slice(0, 30)}…`, 
 ok('redact returns the same shape for empty', redact('').text === '' && redact('').redactions === 0)
 ok('redact returns the same shape for undefined', redact(undefined).text === '' && redact(undefined).redactions === 0)
 
+// ---- comparison module ------------------------------------------------------
+{
+  const { estimateAgentCost, renderComparison, compareModel } = await import('../compare.mjs')
+  const m = compareModel()
+  ok('compareModel resolves to a priced model', m === null || (m.id && m.price?.length === 2), JSON.stringify(m))
+
+  process.env.JEV_COMPARE_MODEL = 'claude-opus-5'
+  const e = estimateAgentCost({ n: 200, candidateTokens: 4000, instructionTokens: 20 })
+  ok('estimate is finite and positive', e.cost > 0 && Number.isFinite(e.cost) && e.seconds > 0)
+  ok('a bigger candidate set costs more',
+    estimateAgentCost({ n: 500, candidateTokens: 9000 }).cost > estimateAgentCost({ n: 50, candidateTokens: 900 }).cost)
+  ok('output tokens are clamped', estimateAgentCost({ n: 100000, candidateTokens: 10 }).outTok <= 6000)
+  ok('a cheaper model estimates cheaper', (() => {
+    process.env.JEV_COMPARE_MODEL = 'claude-haiku-4-5'
+    const cheap = estimateAgentCost({ n: 200, candidateTokens: 4000 }).cost
+    process.env.JEV_COMPARE_MODEL = 'claude-opus-5'
+    return cheap < estimateAgentCost({ n: 200, candidateTokens: 4000 }).cost
+  })())
+  process.env.JEV_COMPARE_MODEL = 'not-a-real-model'
+  ok('an unknown comparison model degrades to no comparison', estimateAgentCost({ n: 10, candidateTokens: 10 }) === null)
+  process.env.JEV_COMPARE_MODEL = 'claude-opus-5'
+
+  // The tool must not claim a win on a run its own guidance says not to make.
+  ok('below break-even there is no ratio claim', (() => {
+    const e = estimateAgentCost({ n: 5, candidateTokens: 50 })
+    if (!e?.belowBreakEven) return false
+    const out = renderComparison({ jevSeconds: 1, jevCost: 0.00001, est: e })
+    return !/cheaper|faster/.test(out) && /reading them directly/.test(out)
+  })())
+  ok('at and above break-even the comparison returns', !estimateAgentCost({ n: 30, candidateTokens: 600 })?.belowBreakEven)
+
+  ok('renderComparison returns nothing without an estimate', renderComparison({ jevSeconds: 1, jevCost: 1, est: null }) === '')
+  const chart = renderComparison({ jevSeconds: 1.4, jevCost: 0.0002, est: estimateAgentCost({ n: 200, candidateTokens: 4000 }) })
+  ok('chart has two rows', chart.split('\n').length === 2, JSON.stringify(chart))
+  ok('chart never prints exponent notation', !/e[-+]\d/.test(chart), chart)
+  // a zero-cost run (cache or mock) must not produce Infinity or NaN in the ratio
+  const z = renderComparison({ jevSeconds: 0.01, jevCost: 0, est: estimateAgentCost({ n: 10, candidateTokens: 100 }) })
+  ok('zero jev cost does not render Infinity/NaN', !/Infinity|NaN/.test(z), z)
+}
+
 console.log(fail ? `\n${fail} FAILURES` : '\nall property tests pass')
 process.exit(fail ? 1 : 0)

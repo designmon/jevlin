@@ -87,6 +87,29 @@ git ls-files '*.ts' | xargs -I{} sh -c 'printf "%s\t%s\n" {} "$(head -3 {})"' \
 One `--context "Next.js app, payments live in src/billing"` is charged once per chunk and
 lifts every judgement — usually worth more than `--peek`.
 
+## Knowing it was jev, and what it saved
+
+Every run prints a receipt to stderr, marked so you can tell at a glance which model answered:
+
+```
+◆ jev 198 candidates → 5 kept · 2 chunks · top 5
+  ├ jev         ████····················   0.8s  $0.00021
+  └ opus-5      ████████████████████████ ~45s   ~$0.069   → 334x cheaper, 56x faster (est.)
+```
+
+The second row is what the same judgement would have cost the model you already use — picked up
+automatically from `~/.claude/settings.json`, or set with `JEV_COMPARE_MODEL`.
+
+**What is measured and what is not.** jev's own time and cost are measured. The comparison's
+input side is measured too (the candidate text has to enter the model's context either way).
+The output side — how much your model would *think* — is an assumption: ~12 tokens per
+candidate at ~55 tok/s. Everything estimated is marked `~`, and you can tune it with
+`JEV_COMPARE_OUTPUT_TOKENS` / `JEV_COMPARE_TPS` or turn it off with `JEV_COMPARE=off`.
+
+**Below ~30 candidates it refuses to claim a win** and says so instead — nobody spends 400
+reasoning tokens on six lines, and a tool that oversells itself against its own advice is not
+worth trusting.
+
 ## Exit codes
 
 | code | meaning | what a caller should do |

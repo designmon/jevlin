@@ -19,6 +19,7 @@ import { appendFileSync, mkdirSync, readFileSync, existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { resolveKey, decide, chunkCandidates, est, CHUNK_TOKEN_BUDGET, MAX_Q, JEV_MODEL } from './core.mjs'
+import { estimateAgentCost, renderComparison, badge, dim } from './compare.mjs'
 
 const EX = { OK: 0, NO: 1, USAGE: 2, DEGRADED: 3, PARTIAL: 4 }
 const LOG = process.env.JEV_LOG || join(homedir(), '.local/state/jev/usage.jsonl')
@@ -110,7 +111,10 @@ function parseCandidates(text, flags) {
     // works unmodified.
     const key = tab >= 0 ? s.slice(0, tab) : s
     const desc = tab >= 0 ? s.slice(tab + 1) : s
-    out.push({ key, desc, i: out.length })
+    // An empty key would print as a blank line and, worse, two of them collide into one
+    // entry in the score map. A candidate with nothing to echo is not a candidate.
+    if (!key.trim()) continue
+    out.push({ key, desc: desc.trim() ? desc : key, i: out.length })
   }
   return out
 }
@@ -153,7 +157,15 @@ async function cmdFilter(instructions, flags) {
   const peekLines = peekF ?? 0
   if (peekLines) for (const c of cands) { const p = peekFile(c.key, peekLines); if (p) c.desc = `${c.key} — ${p}` }
 
-  const room = CHUNK_TOKEN_BUDGET - est(state) - 200
+  // The state rides with EVERY chunk, so if it alone eats the window the chunker degrades to
+  // one candidate per request — 50 calls for 50 candidates, each carrying the whole context.
+  // Refuse loudly instead of quietly billing for it.
+  const stateTok = est(state)
+  const room = CHUNK_TOKEN_BUDGET - stateTok - 200
+  const MIN_ROOM = 2_000
+  if (room < MIN_ROOM)
+    die(`--context is too large (~${stateTok} tokens; the budget is ${CHUNK_TOKEN_BUDGET}). ` +
+        `It is sent with every chunk, so a big one multiplies cost. Shorten it to a paragraph.`)
   const chunks = chunkCandidates(cands, (c) => est(c.desc) + 60, { room, maxQ: MAX_Q.noul })
   const timeoutMs = timeoutF ?? 20_000
 
@@ -197,10 +209,14 @@ async function cmdFilter(instructions, flags) {
   const order = new Map(cands.map((c) => [c.key, c.i]))
   if (!flags.rank && !flags.all) kept = kept.slice().sort((a, b) => order.get(a[0]) - order.get(b[0]))
 
-  const receipt =
-    `jev filter · ${cands.length} cand · ${chunks.length} chunk${chunks.length > 1 ? 's' : ''} · ` +
-    `${((Date.now() - started) / 1000).toFixed(2)}s · $${cost.toFixed(5)} · kept ${kept.length}/${cands.length}` +
-    (hasMin ? ` · min ${min}` : ` · top ${top}`) + ` · key=${source}`
+  const elapsed = (Date.now() - started) / 1000
+  const head = badge(
+    `${cands.length} candidates → ${kept.length} kept · ${chunks.length} chunk${chunks.length > 1 ? 's' : ''}` +
+    (hasMin ? ` · min ${min}` : ` · top ${top}`))
+  const est2 = process.env.JEV_COMPARE === 'off' || flags.compare === 'off' ? null
+    : estimateAgentCost({ n: cands.length, candidateTokens: cands.reduce((a, c) => a + est(c.desc), 0), instructionTokens: est(instructions) })
+  const chart = renderComparison({ jevSeconds: elapsed, jevCost: cost, est: est2 })
+  const receipt = [head, chart, dim(`  key=${source}`)].filter(Boolean).join('\n')
 
   const lines = kept.map(([k, v]) => (flags.scores ? `${v.toFixed(2)}\t${k}` : k))
   const base = { cmd: 'filter', n: cands.length, chunks: chunks.length, kept: kept.length, cost, inTok,
@@ -239,8 +255,14 @@ async function cmdAsk(instructions, flags) {
   const p = out.answers.a?.noul
   if (typeof p !== 'number') return emit({ exit: EX.DEGRADED, reason: 'parse', note: 'no answer' }, flags)
   const min = num(flags, 'min', { min: 0, max: 1 }) ?? 0.5
-  const receipt = `jev ask · ${((Date.now() - started) / 1000).toFixed(2)}s · $${out.cost.toFixed(5)} · p=${p.toFixed(2)} min=${min}` +
-    (truncated ? ' · INPUT TRUNCATED' : '') + ` · key=${source}`
+  const elapsed = (Date.now() - started) / 1000
+  const est2 = process.env.JEV_COMPARE === 'off' || flags.compare === 'off' ? null
+    : estimateAgentCost({ n: 1, candidateTokens: est(blob), instructionTokens: est(instructions) })
+  const receipt = [
+    badge(`${p >= min ? 'YES' : 'no'} · p=${p.toFixed(2)} (min ${min})` + (truncated ? ' · INPUT TRUNCATED' : '')),
+    renderComparison({ jevSeconds: elapsed, jevCost: out.cost, est: est2 }),
+    dim(`  key=${source}`),
+  ].filter(Boolean).join('\n')
   writeLog({ cmd: 'ask', p, min, cost: out.cost, ms: out.ms, exit: p >= min ? 0 : 1, inst: instructions.slice(0, 200) })
   process.stderr.write(receipt + '\n')
   if (flags.p) process.stdout.write(p.toFixed(4) + '\n')
@@ -254,9 +276,21 @@ async function cmdRaw(flags) {
   const body = await readStdin()
   let parsed
   try { parsed = JSON.parse(body) } catch { die('stdin must be JSON: {"state":…,"questions":…}') }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
+    die('stdin must be a JSON object: {"state":…,"questions":…}')
+  const qs = parsed.questions ?? {}
+  if (typeof qs !== 'object' || Array.isArray(qs)) die('"questions" must be an object keyed by your own ids')
+  for (const [id, q] of Object.entries(qs)) {
+    if (!q || !['noul', 'choice', 'score'].includes(q.type))
+      die(`question "${id}" needs type "noul", "choice" or "score" (got ${JSON.stringify(q?.type)})`)
+    if (q.type === 'choice' && (!q.criteria || typeof q.criteria !== 'object'))
+      die(`question "${id}" is a choice and needs "criteria": {label: description}`)
+    if (q.type === 'score' && !Array.isArray(q.criteria))
+      die(`question "${id}" is a score and needs "criteria": [low, …, high]`)
+  }
   const { key } = resolveKey(typeof flags.key === 'string' ? flags.key : undefined)
   if (!key) return emit({ exit: EX.DEGRADED, reason: 'no-key', note: NO_KEY }, flags)
-  const out = await decide(key, parsed.state ?? {}, parsed.questions ?? {},
+  const out = await decide(key, parsed.state ?? {}, qs,
     { timeoutMs: flags.timeout ? Number(flags.timeout) : 20_000 })
   if (!out.ok) return emit({ exit: EX.DEGRADED, reason: out.reason, note: out.error }, flags)
   process.stdout.write(JSON.stringify(out.answers, null, 2) + '\n')
@@ -339,6 +373,14 @@ filter flags
   --none-ok      an empty result exits 0 instead of 1
 common
   --json  --quiet  --timeout MS  --key K
+  --compare off  hide the "what this would have cost your main model" comparison
+
+the comparison
+  The input side is measured (jev's real token usage, and the candidate text itself).
+  The output side is an ASSUMPTION about how much your model would think — ~12 tokens
+  per candidate at ~55 tok/s. Tune with JEV_COMPARE_OUTPUT_TOKENS and JEV_COMPARE_TPS,
+  pick the model with JEV_COMPARE_MODEL, or turn it off with JEV_COMPARE=off.
+  Everything estimated is marked with ~.
 
 exit codes
   0 answered, complete      1 answered, and the answer is no      2 usage error
@@ -358,7 +400,7 @@ when NOT to use it
 `
 
 const KNOWN = {
-  common: ['json', 'quiet', 'q', 'timeout', 'key', 'help'],
+  common: ['json', 'quiet', 'q', 'timeout', 'key', 'help', 'compare'],
   filter: ['min', 'top', 'all', 'rank', 'scores', 'peek', 'context', 'context-file', 'none-ok', 'max-candidates', 'concurrency', 'sep'],
   ask: ['min', 'p'],
   raw: [], check: [], stats: [],
