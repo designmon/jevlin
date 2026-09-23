@@ -6,16 +6,16 @@
  * cannot block anything: the edit has already happened, and PostToolUse has no
  * permissionDecision. The worst case is a wrong warning, which is why it is allowed to exist.
  *
- * JEV_WATCH=shadow (default) logs what it would have said and emits nothing.
- * JEV_WATCH=on emits the warning to the model.  JEV_WATCH=off disables it.
+ * JEVLIN_WATCH=shadow (default) logs what it would have said and emits nothing.
+ * JEVLIN_WATCH=on emits the warning to the model.  JEVLIN_WATCH=off disables it.
  */
-import { appendFileSync, mkdirSync, readFileSync } from 'node:fs'
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { resolveKey, decide, redact } from '../core.mjs'
 
 const DIR = join(homedir(), '.local/state/jev')
-const MODE = process.env.JEV_WATCH ?? 'shadow'
+const MODE = process.env.JEVLIN_WATCH ?? 'shadow'
 const SERVES_BELOW = 0.35   // conservative on purpose: a watchdog that cries wolf gets deleted
 const SURPRISE_ABOVE = 0.85
 /** Never send anything from a path that is sensitive by name — not even to ask about it. */
@@ -62,16 +62,16 @@ try {
   const drift = serves < SERVES_BELOW || surprise > SURPRISE_ABOVE
   log({ path, mode: MODE, serves, surprise, drift, cost: out.cost, ms: out.ms, request: cached.prompt.slice(0, 120) })
 
+  // This hook runs with `async: true` so it never delays an edit — and Claude Code
+  // DISCARDS the stdout of an async hook. So the verdict is handed to surface.mjs (which
+  // runs synchronously and costs nothing) to deliver on the next tool call. One edit late
+  // is fine: this catches an agent wandering, not a single keystroke.
   if (drift && MODE === 'on') {
-    process.stdout.write(JSON.stringify({
-      hookSpecificOutput: {
-        hookEventName: 'PostToolUse',
-        additionalContext:
-          `jev drift check on ${path}: this edit scores ${serves.toFixed(2)} for serving the request ` +
-          `("${cached.prompt.slice(0, 120)}") and ${surprise.toFixed(2)} for being unwelcome. ` +
-          `Stop and confirm this is what was asked for before continuing.`,
-      },
-    }) + '\n')
+    try {
+      writeFileSync(join(DIR, `drift-${ev.session_id}.json`), JSON.stringify({
+        path, serves, surprise, request: cached.prompt.slice(0, 160), t: Date.now(),
+      }))
+    } catch {}
   }
   if (redactions) log({ path, redactions })
 } catch { /* a hook must never break the session */ }

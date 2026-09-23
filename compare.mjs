@@ -1,8 +1,8 @@
 /**
  * "What would this have cost if the agent had judged it itself?"
  *
- * The honest framing: when an agent triages 200 candidates without jev, it must read them
- * into context and reason over them. We know jev's real token usage, and we can count the
+ * The honest framing: when an agent triages 200 candidates without jevlin, it must read them
+ * into context and reason over them. We know jevlin's real token usage, and we can count the
  * candidate text exactly — so the INPUT side is measured, not guessed. The output side (how
  * much the model would think) is an assumption, and every estimate is marked with ~.
  *
@@ -26,9 +26,9 @@ const ALIASES = {
 }
 
 /** How many tokens the agent would generate reasoning over N candidates, and how fast. */
-const OUT_PER_CANDIDATE = Number(process.env.JEV_COMPARE_OUTPUT_TOKENS ?? 12)
+const OUT_PER_CANDIDATE = Number(process.env.JEVLIN_COMPARE_OUTPUT_TOKENS ?? 12)
 const OUT_MIN = 400, OUT_MAX = 6000
-const TOKENS_PER_SEC = Number(process.env.JEV_COMPARE_TPS ?? 55)
+const TOKENS_PER_SEC = Number(process.env.JEVLIN_COMPARE_TPS ?? 55)
 const ROUND_TRIP_S = 1.5
 /**
  * Below this, the comparison is not credible: nobody spends 400 reasoning tokens on six
@@ -39,7 +39,7 @@ export const BREAK_EVEN = 30
 
 /** Which model to compare against: explicit, else whatever Claude Code is configured to use. */
 export function compareModel() {
-  const raw = process.env.JEV_COMPARE_MODEL
+  const raw = process.env.JEVLIN_COMPARE_MODEL
     ?? (() => {
       try { return JSON.parse(readFileSync(join(homedir(), '.claude/settings.json'), 'utf8')).model } catch { return null }
     })()
@@ -77,7 +77,7 @@ const secs = (s) => (s < 10 ? `${s.toFixed(1)}s` : `${Math.round(s)}s`)
 const times = (r) => (r >= 100 ? `${Math.round(r)}x` : r >= 10 ? `${r.toFixed(0)}x` : `${r.toFixed(1)}x`)
 
 /**
- * The saving as a ratio, but only when a ratio means anything. A zero or near-zero jev
+ * The saving as a ratio, but only when a ratio means anything. A zero or near-zero jevlin
  * cost (a cached or mocked response) would otherwise render "Infinityx cheaper".
  */
 function ratios(jevCost, jevSeconds, est) {
@@ -89,8 +89,8 @@ function ratios(jevCost, jevSeconds, est) {
   return `\u2192 ${parts.join(', ')} (est.)`
 }
 
-/** A two-bar chart: what jev spent, against what the configured model would have. */
-export function renderComparison({ jevSeconds, jevCost, est, label = 'jev' }) {
+/** A two-bar chart: what jevlin spent, against what the configured model would have. */
+export function renderComparison({ jevSeconds, jevCost, est, label = 'jevlin' }) {
   if (!est) return ''
   if (est.belowBreakEven)
     return dim(`  ${secs(jevSeconds)} · ${money(jevCost)} · only ${est.n} candidates — reading them directly is usually cheaper than asking`)
@@ -111,5 +111,5 @@ export function renderComparison({ jevSeconds, jevCost, est, label = 'jev' }) {
 
 /** The badge that makes it unmistakable which model answered. */
 export function badge(text) {
-  return `${cyan('◆')} ${bold(cyan('jev'))} ${text}`
+  return `${cyan('◆')} ${bold(cyan('jevlin'))} ${text}`
 }

@@ -1,11 +1,11 @@
 /**
  * A stand-in Jev, so the CLI can be tested end to end without a key or a network.
- * Scores each candidate by whether it contains any word given in JEV_MOCK_MATCH.
- * JEV_MOCK_FAIL_AFTER=N makes every request after the Nth hang, to exercise partial failure.
+ * Scores each candidate by whether it contains any word given in JEVLIN_MOCK_MATCH.
+ * JEVLIN_MOCK_FAIL_AFTER=N makes every request after the Nth hang, to exercise partial failure.
  */
 import { createServer } from 'node:http'
-const MATCH = (process.env.JEV_MOCK_MATCH ?? 'even').split(',')
-const FAIL_AFTER = Number(process.env.JEV_MOCK_FAIL_AFTER ?? Infinity)
+const MATCH = (process.env.JEVLIN_MOCK_MATCH ?? 'even').split(',')
+const FAIL_AFTER = Number(process.env.JEVLIN_MOCK_FAIL_AFTER ?? Infinity)
 let n = 0
 createServer((req, res) => {
   let b = ''
@@ -27,4 +27,4 @@ createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'application/json' })
     res.end(JSON.stringify({ answers, usage: { input_tokens: 50, output_tokens: 3, cost: 0.000005 } }))
   })
-}).listen(Number(process.env.JEV_MOCK_PORT ?? 8896), () => process.stderr.write('mock ready\n'))
+}).listen(Number(process.env.JEVLIN_MOCK_PORT ?? 8896), () => process.stderr.write('mock ready\n'))

@@ -67,21 +67,21 @@ ok('redact returns the same shape for undefined', redact(undefined).text === '' 
   const m = compareModel()
   ok('compareModel resolves to a priced model', m === null || (m.id && m.price?.length === 2), JSON.stringify(m))
 
-  process.env.JEV_COMPARE_MODEL = 'claude-opus-5'
+  process.env.JEVLIN_COMPARE_MODEL = 'claude-opus-5'
   const e = estimateAgentCost({ n: 200, candidateTokens: 4000, instructionTokens: 20 })
   ok('estimate is finite and positive', e.cost > 0 && Number.isFinite(e.cost) && e.seconds > 0)
   ok('a bigger candidate set costs more',
     estimateAgentCost({ n: 500, candidateTokens: 9000 }).cost > estimateAgentCost({ n: 50, candidateTokens: 900 }).cost)
   ok('output tokens are clamped', estimateAgentCost({ n: 100000, candidateTokens: 10 }).outTok <= 6000)
   ok('a cheaper model estimates cheaper', (() => {
-    process.env.JEV_COMPARE_MODEL = 'claude-haiku-4-5'
+    process.env.JEVLIN_COMPARE_MODEL = 'claude-haiku-4-5'
     const cheap = estimateAgentCost({ n: 200, candidateTokens: 4000 }).cost
-    process.env.JEV_COMPARE_MODEL = 'claude-opus-5'
+    process.env.JEVLIN_COMPARE_MODEL = 'claude-opus-5'
     return cheap < estimateAgentCost({ n: 200, candidateTokens: 4000 }).cost
   })())
-  process.env.JEV_COMPARE_MODEL = 'not-a-real-model'
+  process.env.JEVLIN_COMPARE_MODEL = 'not-a-real-model'
   ok('an unknown comparison model degrades to no comparison', estimateAgentCost({ n: 10, candidateTokens: 10 }) === null)
-  process.env.JEV_COMPARE_MODEL = 'claude-opus-5'
+  process.env.JEVLIN_COMPARE_MODEL = 'claude-opus-5'
 
   // The tool must not claim a win on a run its own guidance says not to make.
   ok('below break-even there is no ratio claim', (() => {
@@ -99,7 +99,7 @@ ok('redact returns the same shape for undefined', redact(undefined).text === '' 
   ok('chart never prints exponent notation', !/e[-+]\d/.test(chart), chart)
   // a zero-cost run (cache or mock) must not produce Infinity or NaN in the ratio
   const z = renderComparison({ jevSeconds: 0.01, jevCost: 0, est: estimateAgentCost({ n: 10, candidateTokens: 100 }) })
-  ok('zero jev cost does not render Infinity/NaN', !/Infinity|NaN/.test(z), z)
+  ok('zero jevlin cost does not render Infinity/NaN', !/Infinity|NaN/.test(z), z)
 }
 
 console.log(fail ? `\n${fail} FAILURES` : '\nall property tests pass')

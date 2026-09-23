@@ -15,13 +15,13 @@ import { join } from 'node:path'
 
 const [major] = process.versions.node.split('.').map(Number)
 if (major < 20) {
-  process.stderr.write(`jev needs Node 20 or newer (found ${process.versions.node}).\n`)
+  process.stderr.write(`jevlin needs Node 20 or newer (found ${process.versions.node}).\n`)
   process.exit(3)
 }
 
-export const JEV_MODEL = 'typesafe/jev-1.13-20260917'
-export const JEV_URL = 'https://openrouter.ai/api/alpha/decisions'
-export const JEV_TIMEOUT_MS = 8_000
+export const JEVLIN_MODEL = 'typesafe/jev-1.13-20260917'
+export const JEVLIN_URL = 'https://openrouter.ai/api/alpha/decisions'
+export const JEVLIN_TIMEOUT_MS = 8_000
 
 /**
  * Pessimistic on purpose: paths and camelCase tokenize worse than prose, and the endpoint
@@ -29,7 +29,7 @@ export const JEV_TIMEOUT_MS = 8_000
  * measured `usage.input_tokens` against it over real runs and settled here: the original
  * 1.98x overshoot came mostly from under-counting per-question scaffolding (now 60 tokens),
  * not from the bytes ratio. Tuned to land slightly conservative (~0.8x), so chunks are a
- * little smaller than they need to be rather than one byte too big. `jev stats` reports the ratio; keep it near 1.0.
+ * little smaller than they need to be rather than one byte too big. `jevlin stats` reports the ratio; keep it near 1.0.
  */
 export const BYTES_PER_TOKEN = 2.8
 /** Of Jev's 32k, leaving room for whatever the endpoint wraps around us. */
@@ -43,10 +43,12 @@ export const est = (x) =>
 export function resolveKey(explicit) {
   const tries = [
     ['--key', explicit],
-    ['env:JEV_API_KEY', process.env.JEV_API_KEY],
+    ['env:JEVLIN_API_KEY', process.env.JEVLIN_API_KEY],
+    ['env:JEV_API_KEY', process.env.JEV_API_KEY],          // pre-rename, still honoured
     ['env:OPENROUTER_API_KEY', process.env.OPENROUTER_API_KEY],
     ...[
-      join(homedir(), '.config/jev/env'),
+      join(homedir(), '.config/jevlin/env'),
+      join(homedir(), '.config/jev/env'),                   // pre-rename, still honoured
       join(process.cwd(), '.dev.vars'),
       join(process.cwd(), '.env.local'),
       join(process.cwd(), '.env'),
@@ -58,7 +60,7 @@ export function resolveKey(explicit) {
 
 function fromFile(path) {
   try {
-    const m = readFileSync(path, 'utf8').match(/^\s*(?:export\s+)?(?:JEV_API_KEY|OPENROUTER_API_KEY)\s*=\s*(.+)$/m)
+    const m = readFileSync(path, 'utf8').match(/^\s*(?:export\s+)?(?:JEVLIN_API_KEY|JEV_API_KEY|OPENROUTER_API_KEY)\s*=\s*(.+)$/m)
     return m ? m[1].trim().replace(/^["']|["']$/g, '') : null
   } catch {
     return null
@@ -93,18 +95,18 @@ export function readAnswers(raw, questions) {
 
 /** One attempt, no retries, never throws. */
 export async function decide(key, state, questions, opts = {}) {
-  if (!key) return { ok: false, reason: 'no-key', error: 'no OPENROUTER_API_KEY; run `jev check`' }
+  if (!key) return { ok: false, reason: 'no-key', error: 'no OPENROUTER_API_KEY; run `jevlin check`' }
   const ids = Object.keys(questions)
   if (!ids.length) return { ok: true, answers: {}, ms: 0, cost: 0, inTok: 0, outTok: 0, missing: [] }
 
   const started = Date.now()
   let res
   try {
-    res = await fetch(opts.url ?? process.env.JEV_BASE_URL ?? JEV_URL, {
+    res = await fetch(opts.url ?? process.env.JEVLIN_BASE_URL ?? JEVLIN_URL, {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
-      body: JSON.stringify({ model: opts.model ?? JEV_MODEL, state, questions }),
-      signal: AbortSignal.timeout(opts.timeoutMs ?? JEV_TIMEOUT_MS),
+      body: JSON.stringify({ model: opts.model ?? JEVLIN_MODEL, state, questions }),
+      signal: AbortSignal.timeout(opts.timeoutMs ?? JEVLIN_TIMEOUT_MS),
     })
   } catch (err) {
     const timedOut = err?.name === 'TimeoutError' || err?.name === 'AbortError'

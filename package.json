@@ -1,13 +1,13 @@
 {
-  "name": "jev-cli",
+  "name": "jevlin",
   "version": "0.1.0",
-  "description": "Fast judgement calls for coding agents. Narrow hundreds of candidates to the few that matter, or get a yes/no over a blob, in one round trip.",
+  "description": "Jev's javelin \u2014 fast judgement calls for coding agents. Narrows hundreds of candidates to the few that matter, in one round trip.",
   "type": "module",
   "bin": {
-    "jev": "./jev.mjs"
+    "jevlin": "./jevlin.mjs"
   },
   "files": [
-    "jev.mjs",
+    "jevlin.mjs",
     "core.mjs",
     "compare.mjs",
     "hooks/",
@@ -39,7 +39,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/USERNAME/jev-cli.git"
+    "url": "git+https://github.com/designmon/jevlin.git"
   },
-  "dependencies": {}
+  "dependencies": {},
+  "homepage": "https://github.com/designmon/jevlin#readme",
+  "bugs": {
+    "url": "https://github.com/designmon/jevlin/issues"
+  }
 }

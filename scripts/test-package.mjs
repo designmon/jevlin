@@ -27,12 +27,13 @@ const walk = (rel) => {
     walk(target)
   }
 }
-walk(pkg.bin.jev.replace('./', ''))
+walk(pkg.bin.jevlin.replace('./', ''))
 walk('hooks/watch.mjs')
 walk('hooks/remember.mjs')
+walk('hooks/surface.mjs')
 
-ok('bin target is listed in files[]', shipped(pkg.bin.jev.replace('./', '')))
-ok('bin target exists and is executable-ish', existsSync(join(root, pkg.bin.jev)))
+ok('bin target is listed in files[]', shipped(pkg.bin.jevlin.replace('./', '')))
+ok('bin target exists and is executable-ish', existsSync(join(root, pkg.bin.jevlin)))
 ok('engines pins node >=20 (fetch + AbortSignal.timeout)', /(>=|\^)2[0-9]/.test(pkg.engines?.node ?? ''))
 ok('no runtime dependencies', Object.keys(pkg.dependencies ?? {}).length === 0)
 ok('LICENSE and README ship', shipped('LICENSE') && shipped('README.md'))
@@ -40,7 +41,7 @@ ok('LICENSE and README ship', shipped('LICENSE') && shipped('README.md'))
 // the skill the agents load must ship too
 ok('skill ships', pkg.files.some((f) => f.startsWith('skills')))
 ok('skill has frontmatter with a name and description', (() => {
-  const s = readFileSync(join(root, 'skills/jev/SKILL.md'), 'utf8')
+  const s = readFileSync(join(root, 'skills/jevlin/SKILL.md'), 'utf8')
   return /^---\n[\s\S]*?\bname:\s*\S/.test(s) && /\bdescription:\s*\S/.test(s)
 })())
 
