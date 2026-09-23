@@ -18,8 +18,15 @@ export const JEV_MODEL = 'typesafe/jev-1.13-20260917'
 export const JEV_URL = 'https://openrouter.ai/api/alpha/decisions'
 export const JEV_TIMEOUT_MS = 8_000
 
-/** Pessimistic on purpose: paths and camelCase tokenize worse than prose. */
-export const BYTES_PER_TOKEN = 3.6
+/**
+ * Pessimistic on purpose: paths and camelCase tokenize worse than prose, and the endpoint
+ * wraps every question in scaffolding we never see. Started at 3.6 (raw bytes/token) and
+ * measured `usage.input_tokens` against it over real runs and settled here: the original
+ * 1.98x overshoot came mostly from under-counting per-question scaffolding (now 60 tokens),
+ * not from the bytes ratio. Tuned to land slightly conservative (~0.8x), so chunks are a
+ * little smaller than they need to be rather than one byte too big. `jev stats` reports the ratio; keep it near 1.0.
+ */
+export const BYTES_PER_TOKEN = 2.8
 /** Of Jev's 32k, leaving room for whatever the endpoint wraps around us. */
 export const CHUNK_TOKEN_BUDGET = 24_000
 export const MAX_Q = { noul: 150, choice: 80, score: 80 }

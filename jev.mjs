@@ -124,7 +124,7 @@ async function cmdFilter(instructions, flags) {
   if (peekLines) for (const c of cands) { const p = peekFile(c.key, peekLines); if (p) c.desc = `${c.key} — ${p}` }
 
   const room = CHUNK_TOKEN_BUDGET - est(state) - 200
-  const chunks = chunkCandidates(cands, (c) => est(c.desc) + 30, { room, maxQ: MAX_Q.noul })
+  const chunks = chunkCandidates(cands, (c) => est(c.desc) + 60, { room, maxQ: MAX_Q.noul })
   const timeoutMs = flags.timeout ? Number(flags.timeout) : 20_000
 
   const settled = await Promise.all(chunks.map(async (items) => {
@@ -174,7 +174,7 @@ async function cmdFilter(instructions, flags) {
 
   const lines = kept.map(([k, v]) => (flags.scores ? `${v.toFixed(2)}\t${k}` : k))
   const base = { cmd: 'filter', n: cands.length, chunks: chunks.length, kept: kept.length, cost, inTok,
-    estTok: est(state) + cands.reduce((a, c) => a + est(c.desc) + 30, 0), ms, unjudged, inst: instructions.slice(0, 200) }
+    estTok: est(state) + cands.reduce((a, c) => a + est(c.desc) + 60, 0), ms, unjudged, inst: instructions.slice(0, 200) }
 
   if (failed) {
     return emit({ exit: EX.PARTIAL, lines, receipt, reason: 'partial',
