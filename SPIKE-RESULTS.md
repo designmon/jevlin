@@ -1,6 +1,6 @@
 # Phase 0 results — measured 2026-09-23
 
-35 runs over 24 real commits in `figle-app` (134 files) and `boardroom-jev` (198 files).
+35 runs over 24 real commits in two private repositories (134 and 198 tracked files).
 Task = commit message; gold = the pre-existing files that commit changed; candidates = every
 file tracked before it. One `noul` per file.
 

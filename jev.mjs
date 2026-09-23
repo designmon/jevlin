@@ -25,6 +25,11 @@ const LOG = process.env.JEV_LOG || join(homedir(), '.local/state/jev/usage.jsonl
 const DAILY_CAP_USD = Number(process.env.JEV_DAILY_CAP ?? 1)
 const started = Date.now()
 
+const NO_KEY = `no API key found. jev uses OpenRouter — bring your own:
+  1. get a key at https://openrouter.ai/keys
+  2. export OPENROUTER_API_KEY=sk-or-...        (or put it in ~/.config/jev/env)
+  3. jev check`
+
 // ---------------------------------------------------------------- argv
 
 function parseArgs(argv) {
@@ -46,6 +51,22 @@ function parseArgs(argv) {
 }
 
 const die = (msg) => { process.stderr.write(`jev: ${msg}\nreason=usage\n`); process.exit(EX.USAGE) }
+
+/**
+ * A malformed number must be a usage error, not a silent empty result. `--top abc` used to
+ * yield NaN, keep nothing, and exit 1 — which tells the caller "jev considered it and said
+ * no". Exit 1 has to mean a real judgement or the whole contract is worthless.
+ */
+function num(flags, name, { min = -Infinity, max = Infinity, int = false } = {}) {
+  if (flags[name] === undefined) return undefined
+  const raw = flags[name]
+  if (raw === true) die(`--${name} needs a value`)
+  const v = Number(raw)
+  if (!Number.isFinite(v)) die(`--${name} must be a number, got "${raw}"`)
+  if (int && !Number.isInteger(v)) die(`--${name} must be a whole number, got "${raw}"`)
+  if (v < min || v > max) die(`--${name} must be between ${min} and ${max}, got ${v}`)
+  return v
+}
 
 async function readStdin() {
   if (process.stdin.isTTY) return ''
@@ -106,11 +127,20 @@ function peekFile(path, lines) {
 
 async function cmdFilter(instructions, flags) {
   if (!instructions) die('filter needs instructions: jev filter "what makes a candidate relevant"')
+  const minF = num(flags, 'min', { min: 0, max: 1 })
+  const topF = num(flags, 'top', { min: 1, int: true })
+  const timeoutF = num(flags, 'timeout', { min: 1, int: true })
+  const peekF = flags.peek === true ? 20 : num(flags, 'peek', { min: 1, max: 500, int: true })
+  const maxCands = num(flags, 'max-candidates', { min: 1, int: true }) ?? 2000
+
   const cands = parseCandidates(await readStdin(), flags)
   if (!cands.length) die('no candidates on stdin')
+  // A stray `find /` would otherwise send a hundred thousand questions and bill for them.
+  if (cands.length > maxCands)
+    die(`${cands.length} candidates exceeds --max-candidates ${maxCands}; narrow the input first (or raise the flag deliberately)`)
 
   const { key, source } = resolveKey(typeof flags.key === 'string' ? flags.key : undefined)
-  if (!key) return emit({ exit: EX.DEGRADED, reason: 'no-key', note: 'no API key; run `jev check`' }, flags)
+  if (!key) return emit({ exit: EX.DEGRADED, reason: 'no-key', note: NO_KEY }, flags)
   if (spentToday() >= DAILY_CAP_USD)
     return emit({ exit: EX.DEGRADED, reason: 'cap', note: `daily cap $${DAILY_CAP_USD} reached` }, flags)
 
@@ -120,12 +150,12 @@ async function cmdFilter(instructions, flags) {
   }
   const state = { request: instructions, ...(context.length ? { context: context.join('\n') } : {}) }
 
-  const peekLines = flags.peek === true ? 20 : flags.peek ? Number(flags.peek) : 0
+  const peekLines = peekF ?? 0
   if (peekLines) for (const c of cands) { const p = peekFile(c.key, peekLines); if (p) c.desc = `${c.key} — ${p}` }
 
   const room = CHUNK_TOKEN_BUDGET - est(state) - 200
   const chunks = chunkCandidates(cands, (c) => est(c.desc) + 60, { room, maxQ: MAX_Q.noul })
-  const timeoutMs = flags.timeout ? Number(flags.timeout) : 20_000
+  const timeoutMs = timeoutF ?? 20_000
 
   const settled = await Promise.all(chunks.map(async (items) => {
     const questions = Object.fromEntries(items.map((c) => [`c${c.i}`, {
@@ -158,10 +188,10 @@ async function cmdFilter(instructions, flags) {
   const median = q(0.5)
   const spread = median > 0.3 && median < 0.7 ? q(0.95) - q(0.05) : 1
 
-  const hasMin = flags.min !== undefined
-  const min = hasMin ? Number(flags.min) : 0
+  const hasMin = minF !== undefined
+  const min = minF ?? 0
   // Rank cuts, not threshold cuts: a rank survives miscalibration, a threshold does not.
-  const top = flags.all ? ranked.length : flags.top ? Number(flags.top) : 20
+  const top = flags.all ? ranked.length : topF ?? 20
   let kept = ranked.filter(([, v]) => v >= min).slice(0, top)
 
   const order = new Map(cands.map((c) => [c.key, c.i]))
@@ -200,15 +230,15 @@ async function cmdAsk(instructions, flags) {
   if (blob.length > CAP) { blob = blob.slice(0, CAP / 2) + '\n…[truncated]…\n' + blob.slice(-CAP / 2); truncated = true }
 
   const { key, source } = resolveKey(typeof flags.key === 'string' ? flags.key : undefined)
-  if (!key) return emit({ exit: EX.DEGRADED, reason: 'no-key', note: 'no API key; run `jev check`' }, flags)
+  if (!key) return emit({ exit: EX.DEGRADED, reason: 'no-key', note: NO_KEY }, flags)
 
   const out = await decide(key, { text: blob }, { a: { type: 'noul', instructions } },
-    { timeoutMs: flags.timeout ? Number(flags.timeout) : 20_000 })
+    { timeoutMs: num(flags, 'timeout', { min: 1, int: true }) ?? 20_000 })
   if (!out.ok) return emit({ exit: EX.DEGRADED, reason: out.reason, note: out.error }, flags)
 
   const p = out.answers.a?.noul
   if (typeof p !== 'number') return emit({ exit: EX.DEGRADED, reason: 'parse', note: 'no answer' }, flags)
-  const min = flags.min !== undefined ? Number(flags.min) : 0.5
+  const min = num(flags, 'min', { min: 0, max: 1 }) ?? 0.5
   const receipt = `jev ask · ${((Date.now() - started) / 1000).toFixed(2)}s · $${out.cost.toFixed(5)} · p=${p.toFixed(2)} min=${min}` +
     (truncated ? ' · INPUT TRUNCATED' : '') + ` · key=${source}`
   writeLog({ cmd: 'ask', p, min, cost: out.cost, ms: out.ms, exit: p >= min ? 0 : 1, inst: instructions.slice(0, 200) })
@@ -225,7 +255,7 @@ async function cmdRaw(flags) {
   let parsed
   try { parsed = JSON.parse(body) } catch { die('stdin must be JSON: {"state":…,"questions":…}') }
   const { key } = resolveKey(typeof flags.key === 'string' ? flags.key : undefined)
-  if (!key) return emit({ exit: EX.DEGRADED, reason: 'no-key', note: 'no API key' }, flags)
+  if (!key) return emit({ exit: EX.DEGRADED, reason: 'no-key', note: NO_KEY }, flags)
   const out = await decide(key, parsed.state ?? {}, parsed.questions ?? {},
     { timeoutMs: flags.timeout ? Number(flags.timeout) : 20_000 })
   if (!out.ok) return emit({ exit: EX.DEGRADED, reason: out.reason, note: out.error }, flags)
@@ -237,7 +267,7 @@ async function cmdRaw(flags) {
 
 async function cmdCheck(flags) {
   const { key, source } = resolveKey(typeof flags.key === 'string' ? flags.key : undefined)
-  if (!key) { process.stderr.write('jev check: no key found\nreason=no-key\n'); process.exit(EX.DEGRADED) }
+  if (!key) { process.stderr.write(`jev check: ${NO_KEY}\nreason=no-key\n`); process.exit(EX.DEGRADED) }
   const out = await decide(key, { probe: true }, { a: { type: 'noul', instructions: 'This is a test.' } }, { timeoutMs: 15_000 })
   if (!out.ok) { process.stderr.write(`jev check: ${out.reason} — ${out.error}\nreason=${out.reason}\n`); process.exit(EX.DEGRADED) }
   process.stdout.write(`ok · ${(out.ms / 1000).toFixed(2)}s · key=${source} · model=${JEV_MODEL} · spent today $${spentToday().toFixed(4)}\n`)
@@ -270,7 +300,9 @@ function emit(r, flags = {}) {
   if (r.base) writeLog({ ...r.base, exit: r.exit, reason: r.reason ?? null })
   if (f.json) {
     process.stdout.write(JSON.stringify({
-      ok: r.exit === EX.OK, complete: r.exit !== EX.PARTIAL, exit: r.exit, reason: r.reason ?? null,
+      // `complete` means "every candidate was judged" — false on a degraded run (nothing was
+      // judged) as well as on a partial one. Only exit 0 and a clean "no" are complete.
+      ok: r.exit === EX.OK, complete: r.exit === EX.OK || r.exit === EX.NO, exit: r.exit, reason: r.reason ?? null,
       results: (r.lines ?? []).map((l) => (l.includes('\t') ? { p: Number(l.split('\t')[0]), key: l.split('\t')[1] } : { key: l })),
       ...(r.base ?? {}),
     }) + '\n')
@@ -298,6 +330,7 @@ const HELP = `jev — fast judgement calls, for coding agents and shells.
 
 filter flags
   --top N        keep the N best (default 20).  --all  score everything
+  --max-candidates N   refuse more than N lines of input (default 2000)
   --min P        also require probability >= P (opt-in; the defaults are guesses)
   --rank         emit in probability order (default: original stdin order)
   --scores       prefix each line with the probability
@@ -324,11 +357,23 @@ when NOT to use it
     (it recovers ~17% of the files a large change touches). A starting point, not the answer.
 `
 
+const KNOWN = {
+  common: ['json', 'quiet', 'q', 'timeout', 'key', 'help'],
+  filter: ['min', 'top', 'all', 'rank', 'scores', 'peek', 'context', 'context-file', 'none-ok', 'max-candidates', 'concurrency', 'sep'],
+  ask: ['min', 'p'],
+  raw: [], check: [], stats: [],
+}
+
 const { flags, rest } = parseArgs(process.argv.slice(2))
 const cmd = rest[0]
 const arg = rest.slice(1).join(' ')
 try {
   if (!cmd || flags.help || cmd === 'help') { process.stdout.write(HELP); process.exit(cmd ? EX.OK : EX.USAGE) }
+  // A typo like `--tpo 5` must not be silently ignored: the caller would get 20 results and
+  // believe it asked for 5.
+  const allowed = new Set([...KNOWN.common, ...(KNOWN[cmd === 'rank' ? 'filter' : cmd] ?? [])])
+  const unknown = Object.keys(flags).filter((f) => !allowed.has(f))
+  if (unknown.length) die(`unknown flag${unknown.length > 1 ? 's' : ''} for "${cmd}": ${unknown.map((f) => '--' + f).join(', ')}`)
   else if (cmd === 'filter') await cmdFilter(arg, flags)
   else if (cmd === 'rank') await cmdFilter(arg, { ...flags, rank: true, scores: true })
   else if (cmd === 'ask') await cmdAsk(arg, flags)

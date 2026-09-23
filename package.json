@@ -1,0 +1,44 @@
+{
+  "name": "jev-cli",
+  "version": "0.1.0",
+  "description": "Fast judgement calls for coding agents. Narrow hundreds of candidates to the few that matter, or get a yes/no over a blob, in one round trip.",
+  "type": "module",
+  "bin": {
+    "jev": "./jev.mjs"
+  },
+  "files": [
+    "jev.mjs",
+    "core.mjs",
+    "hooks/",
+    "skills/",
+    "install.sh",
+    "uninstall.sh",
+    "README.md",
+    "SPIKE-RESULTS.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node scripts/stress.mjs && node scripts/test-redact.mjs && ./scripts/test-cli.sh",
+    "bench": "node scripts/spike.mjs both",
+    "bench:baseline": "node scripts/baseline.mjs"
+  },
+  "keywords": [
+    "claude-code",
+    "codex",
+    "agent",
+    "cli",
+    "llm",
+    "openrouter",
+    "triage",
+    "ranking"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/USERNAME/jev-cli.git"
+  },
+  "dependencies": {}
+}

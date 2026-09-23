@@ -6,13 +6,18 @@
  * <=255 labels), or a place on an ordered scale (`score`). Measured 2026-09-21:
  * 0.3s for 20 questions, 0.6s for 150, about $0.0006 for the 150. Context 32k.
  *
- * The rule inherited from boardroom-jev/worker/jevClient.ts, and the reason nothing
- * here throws: a Jev that is down, slow or unset leaves the caller doing exactly what
+ * The rule this follows, and the reason nothing here throws: a Jev that is down, slow or unset leaves the caller doing exactly what
  * it did before. A failure is a reason, never an exception.
  */
 import { readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+
+const [major] = process.versions.node.split('.').map(Number)
+if (major < 20) {
+  process.stderr.write(`jev needs Node 20 or newer (found ${process.versions.node}).\n`)
+  process.exit(3)
+}
 
 export const JEV_MODEL = 'typesafe/jev-1.13-20260917'
 export const JEV_URL = 'https://openrouter.ai/api/alpha/decisions'
@@ -42,9 +47,8 @@ export function resolveKey(explicit) {
     ['env:OPENROUTER_API_KEY', process.env.OPENROUTER_API_KEY],
     ...[
       join(homedir(), '.config/jev/env'),
-      join(homedir(), '.config/notch-coach/env'),
-      join(homedir(), 'boardroom-jev/.dev.vars'),
       join(process.cwd(), '.dev.vars'),
+      join(process.cwd(), '.env.local'),
       join(process.cwd(), '.env'),
     ].map((f) => [f, fromFile(f)]),
   ]
@@ -96,7 +100,7 @@ export async function decide(key, state, questions, opts = {}) {
   const started = Date.now()
   let res
   try {
-    res = await fetch(opts.url ?? JEV_URL, {
+    res = await fetch(opts.url ?? process.env.JEV_BASE_URL ?? JEV_URL, {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
       body: JSON.stringify({ model: opts.model ?? JEV_MODEL, state, questions }),
@@ -220,7 +224,9 @@ export async function runChunks(key, state, chunks, buildQuestions, opts = {}) {
  * when the value is too short or too low-entropy for the generic rule to see it.
  */
 export function redact(text) {
-  if (!text) return text
+  // Always the same shape, so `redact(x).text` is never undefined for a caller that
+  // then ships it over the wire.
+  if (!text) return { text: '', redactions: 0 }
   let n = 0
   const hit = () => { n++; return '<redacted>' }
   const out = String(text)
