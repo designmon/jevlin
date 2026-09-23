@@ -88,7 +88,8 @@ ok('redact returns the same shape for undefined', redact(undefined).text === '' 
     const e = estimateAgentCost({ n: 5, candidateTokens: 50 })
     if (!e?.belowBreakEven) return false
     const out = renderComparison({ jevSeconds: 1, jevCost: 0.00001, est: e })
-    return !/cheaper|faster/.test(out) && /reading them directly/.test(out)
+    // the phrase itself contains "cheaper"; what must be absent is a RATIO claim like "798x cheaper"
+    return !/\d+(\.\d+)?x (cheaper|faster)/.test(out) && /reading them directly/.test(out)
   })())
   ok('at and above break-even the comparison returns', !estimateAgentCost({ n: 30, candidateTokens: 600 })?.belowBreakEven)
 
