@@ -9,6 +9,7 @@
   "files": [
     "jev.mjs",
     "core.mjs",
+    "compare.mjs",
     "hooks/",
     "skills/",
     "install.sh",
@@ -21,7 +22,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "test": "node scripts/stress.mjs && node scripts/test-redact.mjs && ./scripts/test-cli.sh",
+    "test": "node scripts/stress.mjs && node scripts/test-redact.mjs && node scripts/test-package.mjs && ./scripts/test-cli.sh",
     "bench": "node scripts/spike.mjs both",
     "bench:baseline": "node scripts/baseline.mjs"
   },
