@@ -480,6 +480,7 @@ const HELP = `jevlin — fast judgement calls, for coding agents and shells.
   jevlin init                      set up your API key, and the agent skill
   jevlin check                     resolve the key and make one trivial call
   jevlin stats                     what it has cost and how well it has worked
+  jevlin --version                 which version is installed
 
 filter flags
   --top N        keep the N best (default 20).  --all  score everything
@@ -519,7 +520,7 @@ when NOT to use it
 `
 
 const KNOWN = {
-  common: ['json', 'quiet', 'q', 'timeout', 'key', 'help', 'compare'],
+  common: ['json', 'quiet', 'q', 'timeout', 'key', 'help', 'compare', 'version', 'v'],
   filter: ['min', 'top', 'all', 'rank', 'scores', 'peek', 'context', 'context-file', 'none-ok', 'max-candidates', 'concurrency', 'sep'],
   ask: ['min', 'p'],
   raw: [], check: [], stats: [], init: [],
@@ -527,6 +528,15 @@ const KNOWN = {
 
 const { flags, rest } = parseArgs(process.argv.slice(2))
 const cmd = rest[0]
+
+// Answered before anything else: this is what someone runs to check an install worked,
+// so it must not need a key, a network, or a subcommand.
+if (flags.version || cmd === 'version' || cmd === '-v' || cmd === '-V') {
+  let v = 'unknown'
+  try { v = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version } catch {}
+  process.stdout.write(`jevlin ${v}\n`)
+  process.exit(EX.OK)
+}
 const arg = rest.slice(1).join(' ')
 try {
   if (!cmd || flags.help || cmd === 'help') { process.stdout.write(HELP); process.exit(cmd ? EX.OK : EX.USAGE) }

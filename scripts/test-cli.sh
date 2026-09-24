@@ -40,6 +40,16 @@ b
 t "exit 2 on an unknown flag"         2 'a
 b
 ' node jevlin.mjs filter q --tpo 5
+# --version is what someone runs to check an install worked: no key, no network, exit 0.
+for vflag in --version -v version; do
+  ( unset JEVLIN_API_KEY OPENROUTER_API_KEY JEVLIN_BASE_URL
+    out=$(HOME=/tmp/jevlin-initless node jevlin.mjs $vflag 2>&1); rc=$?
+    case "$out" in jevlin\ [0-9]*) v_ok=1 ;; *) v_ok=0 ;; esac
+    [ "$rc" = 0 ] && [ "$v_ok" = 1 ] ) \
+    && echo "  ok    $vflag reports the version with no key and no network" \
+    || { echo "  FAIL  $vflag"; fail=1; }
+done
+
 t "exit 2 on empty stdin"             2 '' node jevlin.mjs filter q
 if grep -q 'before the "|"' /tmp/jev-t-err.txt; then echo "  ok    empty stdin says WHY, not just that it is empty"
 else echo "  FAIL  empty-stdin message is unhelpful: $(head -1 /tmp/jev-t-err.txt)"; fail=1; fi

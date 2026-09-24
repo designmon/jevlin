@@ -1,6 +1,6 @@
 {
   "name": "jevlin",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Jev's javelin \u2014 fast judgement calls for coding agents. Narrows hundreds of candidates to the few that matter, in one round trip.",
   "type": "module",
   "bin": {
