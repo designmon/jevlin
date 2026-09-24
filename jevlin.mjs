@@ -53,6 +53,21 @@ function parseArgs(argv) {
   return { flags, rest }
 }
 
+/** Levenshtein, small and unclever — it only ever runs on a flag the user already got wrong. */
+function editDistance(a, b) {
+  const prev = Array.from({ length: b.length + 1 }, (_, i) => i)
+  for (let i = 1; i <= a.length; i++) {
+    let diag = prev[0]
+    prev[0] = i
+    for (let j = 1; j <= b.length; j++) {
+      const tmp = prev[j]
+      prev[j] = Math.min(prev[j] + 1, prev[j - 1] + 1, diag + (a[i - 1] === b[j - 1] ? 0 : 1))
+      diag = tmp
+    }
+  }
+  return prev[b.length]
+}
+
 const die = (msg) => { process.stderr.write(`jevlin: ${msg}\nreason=usage\n`); process.exit(EX.USAGE) }
 
 /**
@@ -544,7 +559,20 @@ try {
   // believe it asked for 5.
   const allowed = new Set([...KNOWN.common, ...(KNOWN[cmd === 'rank' ? 'filter' : cmd] ?? [])])
   const unknown = Object.keys(flags).filter((f) => !allowed.has(f))
-  if (unknown.length) die(`unknown flag${unknown.length > 1 ? 's' : ''} for "${cmd}": ${unknown.map((f) => '--' + f).join(', ')}`)
+  if (unknown.length) {
+    // "--top10" and "--to" are the two ways people get a flag slightly wrong. Naming the
+    // flag they meant turns a dead end into a fix.
+    const hints = []
+    for (const f of unknown) {
+      const glued = [...allowed].find((k) => f.startsWith(k) && /^\d/.test(f.slice(k.length)))
+      if (glued) { hints.push(`--${f} looks like "--${glued} ${f.slice(glued.length)}" (it needs a space)`); continue }
+      const near = [...allowed].find((k) => k.startsWith(f) || f.startsWith(k))
+        ?? [...allowed].map((k) => [k, editDistance(f, k)]).filter(([, d]) => d <= 2).sort((a, b) => a[1] - b[1])[0]?.[0]
+      if (near) hints.push(`--${f} — did you mean --${near}?`)
+    }
+    die(`unknown flag${unknown.length > 1 ? 's' : ''} for "${cmd}": ${unknown.map((f) => '--' + f).join(', ')}` +
+      (hints.length ? '\n  ' + hints.join('\n  ') : ''))
+  }
   else if (cmd === 'filter') await cmdFilter(arg, flags)
   else if (cmd === 'rank') await cmdFilter(arg, { ...flags, rank: true, scores: true })
   else if (cmd === 'ask') await cmdAsk(arg, flags)

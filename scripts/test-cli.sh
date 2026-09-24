@@ -40,6 +40,15 @@ b
 t "exit 2 on an unknown flag"         2 'a
 b
 ' node jevlin.mjs filter q --tpo 5
+grep -q 'did you mean --top' /tmp/jev-t-err.txt \
+  && echo "  ok    a mistyped flag names the one you meant" \
+  || { echo "  FAIL  no suggestion for a mistyped flag"; fail=1; }
+t "exit 2 on a glued flag value"      2 'a
+b
+' node jevlin.mjs filter q --top10
+grep -q 'it needs a space' /tmp/jev-t-err.txt \
+  && echo "  ok    a glued flag value says it needs a space" \
+  || { echo "  FAIL  no hint for --top10"; fail=1; }
 # --version is what someone runs to check an install worked: no key, no network, exit 0.
 for vflag in --version -v version; do
   ( unset JEVLIN_API_KEY OPENROUTER_API_KEY JEVLIN_BASE_URL
