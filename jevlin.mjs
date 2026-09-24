@@ -387,18 +387,22 @@ async function cmdInit() {
   process.stdout.write('jevlin never bundles or proxies one.\n\n')
 
   const existing = resolveKey()
+  let needKey = true
   if (existing.key) {
     process.stdout.write(`A key is already being found at: ${existing.source}\n`)
     const a = await ask('Replace it? [y/N] ')
-    if (!/^y/i.test(a)) { process.stdout.write('Left alone. Run `jevlin check` to test it.\n'); process.exit(EX.OK) }
+    // Declining must not end setup — someone who set a key months ago and has just
+    // installed a new agent still needs the skill step below.
+    if (!/^y/i.test(a)) { process.stdout.write('  keeping it.\n'); needKey = false }
   }
 
-  if (!process.stdin.isTTY) {
+  if (needKey && !process.stdin.isTTY) {
     process.stderr.write('jevlin init needs an interactive terminal.\nSet it by hand instead:\n' +
       `  mkdir -p ${dirname(KEYFILE)}\n  echo 'OPENROUTER_API_KEY=sk-or-...' > ${KEYFILE}\n  chmod 600 ${KEYFILE}\n`)
     process.exit(EX.USAGE)
   }
 
+  if (needKey) {
   process.stdout.write('  1. open https://openrouter.ai/keys and create a key\n')
   process.stdout.write('  2. paste it below (it will not be shown, and will not enter your shell history)\n\n')
   const key = await askHidden('  key: ')
@@ -417,6 +421,7 @@ async function cmdInit() {
   mkdirSync(dirname(KEYFILE), { recursive: true, mode: 0o700 })
   writeFileSync(KEYFILE, `OPENROUTER_API_KEY=${key}\n`, { mode: 0o600 })
   process.stdout.write(`  ✓ works (${(probe.ms / 1000).toFixed(2)}s) and saved to ${KEYFILE} (chmod 600)\n`)
+  }
 
   // Offer the agent skill to whichever agents are actually installed.
   const agents = [['Claude Code', join(homedir(), '.claude/skills')], ['Codex', join(homedir(), '.codex/skills')]]
@@ -433,7 +438,10 @@ async function cmdInit() {
     }
   }
 
-  process.stdout.write('\nReady. Try it:\n  git ls-files | jevlin filter "relevant to authentication" --top 10\n\n')
+  if (!agents.length)
+    process.stdout.write('\n  No Claude Code or Codex install found (~/.claude/skills, ~/.codex/skills).\n' +
+      '  Install one, then run `jevlin init` again to add the skill.\n')
+  process.stdout.write('\nReady. Try it, from inside a git repository:\n  git ls-files | jevlin filter "relevant to authentication" --top 10\n\n')
   process.exit(EX.OK)
 }
 
