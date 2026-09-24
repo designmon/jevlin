@@ -139,8 +139,17 @@ async function cmdFilter(instructions, flags) {
   const peekF = flags.peek === true ? 20 : num(flags, 'peek', { min: 1, max: 500, int: true })
   const maxCands = num(flags, 'max-candidates', { min: 1, int: true }) ?? 2000
 
-  const cands = parseCandidates(await readStdin(), flags)
-  if (!cands.length) die('no candidates on stdin')
+  const raw = await readStdin()
+  const cands = parseCandidates(raw, flags)
+  if (!cands.length) {
+    // "no candidates on stdin" is true but unhelpful: the usual cause is that the command
+    // before the pipe produced nothing, and its own error scrolled past a moment earlier.
+    die(raw.trim()
+      ? 'every line on stdin was blank'
+      : 'nothing arrived on stdin — the command before the "|" produced no output.\n' +
+        '  If that was `git ls-files`, check you are inside a git repository (cd into your project first).\n' +
+        '  Quick check:  git ls-files | head')
+  }
   // A stray `find /` would otherwise send a hundred thousand questions and bill for them.
   if (cands.length > maxCands)
     die(`${cands.length} candidates exceeds --max-candidates ${maxCands}; narrow the input first (or raise the flag deliberately)`)

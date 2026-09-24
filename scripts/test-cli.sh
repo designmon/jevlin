@@ -41,6 +41,11 @@ t "exit 2 on an unknown flag"         2 'a
 b
 ' node jevlin.mjs filter q --tpo 5
 t "exit 2 on empty stdin"             2 '' node jevlin.mjs filter q
+if grep -q 'before the "|"' /tmp/jev-t-err.txt; then echo "  ok    empty stdin says WHY, not just that it is empty"
+else echo "  FAIL  empty-stdin message is unhelpful: $(head -1 /tmp/jev-t-err.txt)"; fail=1; fi
+t "exit 2 when every line is blank"   2 '   
+  
+' node jevlin.mjs filter q
 t "ask says yes"                      0 '2' node jevlin.mjs ask "even"
 t "ask says no"                       1 '3' node jevlin.mjs ask "even"
 t "exit 2 over --max-candidates"      2 "$(seq 1 5000)" node jevlin.mjs filter q
