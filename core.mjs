@@ -19,6 +19,9 @@ if (major < 20) {
   process.exit(3)
 }
 
+/** One definition, imported everywhere — this was four literals, and a rename missed three. */
+export const STATE_DIR = join(homedir(), '.local/state/jevlin')
+
 export const JEVLIN_MODEL = 'typesafe/jev-1.13-20260917'
 export const JEVLIN_URL = 'https://openrouter.ai/api/alpha/decisions'
 export const JEVLIN_TIMEOUT_MS = 8_000

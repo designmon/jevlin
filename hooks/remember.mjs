@@ -7,10 +7,10 @@
  * directly, so it is both cheaper and correct. It writes nothing to stdout.
  */
 import { mkdirSync, writeFileSync, readdirSync, statSync, unlinkSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { STATE_DIR } from '../core.mjs'
 import { join } from 'node:path'
 
-const DIR = join(homedir(), '.local/state/jev')
+const DIR = STATE_DIR
 const DAY = 86_400_000
 
 try {

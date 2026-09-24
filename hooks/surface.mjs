@@ -13,10 +13,10 @@
  * No network, no parsing of jevlin's human-readable output — it reads the usage log jevlin writes.
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync } from 'node:fs'
-import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { STATE_DIR } from '../core.mjs'
 
-const DIR = join(homedir(), '.local/state/jev')
+const DIR = STATE_DIR
 const LOG = process.env.JEVLIN_LOG || join(DIR, 'usage.jsonl')
 
 const money = (v) => (v >= 0.01 ? `$${v.toFixed(2)}` : v >= 0.0001 ? `$${v.toFixed(4)}` : `$${v.toFixed(6).replace(/0+$/, '')}`)

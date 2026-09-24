@@ -1,7 +1,7 @@
 {
   "name": "jevlin",
-  "version": "0.1.0",
-  "description": "Jev's javelin — fast judgement calls for coding agents. Narrows hundreds of candidates to the few that matter, in one round trip.",
+  "version": "0.1.1",
+  "description": "Jev's javelin \u2014 fast judgement calls for coding agents. Narrows hundreds of candidates to the few that matter, in one round trip.",
   "type": "module",
   "bin": {
     "jevlin": "jevlin.mjs"
@@ -22,7 +22,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "test": "node scripts/stress.mjs && node scripts/test-redact.mjs && node scripts/test-package.mjs && ./scripts/test-cli.sh",
+    "test": "node scripts/stress.mjs && node scripts/test-redact.mjs && node scripts/test-package.mjs && node scripts/test-hooks.mjs && ./scripts/test-cli.sh",
     "bench": "node scripts/spike.mjs both",
     "bench:baseline": "node scripts/baseline.mjs"
   },

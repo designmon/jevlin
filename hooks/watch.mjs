@@ -10,11 +10,10 @@
  * JEVLIN_WATCH=on emits the warning to the model.  JEVLIN_WATCH=off disables it.
  */
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { resolveKey, decide, redact } from '../core.mjs'
+import { resolveKey, decide, redact, STATE_DIR } from '../core.mjs'
 
-const DIR = join(homedir(), '.local/state/jev')
+const DIR = STATE_DIR
 const MODE = process.env.JEVLIN_WATCH ?? 'shadow'
 const SERVES_BELOW = 0.35   // conservative on purpose: a watchdog that cries wolf gets deleted
 const SURPRISE_ABOVE = 0.85
