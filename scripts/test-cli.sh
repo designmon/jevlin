@@ -5,6 +5,7 @@ cd "$(dirname "$0")/.."
 node scripts/mock-jevlin.mjs >/dev/null 2>&1 & MOCK=$!
 trap 'kill $MOCK 2>/dev/null' EXIT
 sleep 1
+rm -rf /tmp/jevlin-initless && mkdir -p /tmp/jevlin-initless
 export JEVLIN_BASE_URL="http://127.0.0.1:8896" JEVLIN_API_KEY=test JEVLIN_NO_LOG=1
 fail=0
 
@@ -43,6 +44,18 @@ t "exit 2 on empty stdin"             2 '' node jevlin.mjs filter q
 t "ask says yes"                      0 '2' node jevlin.mjs ask "even"
 t "ask says no"                       1 '3' node jevlin.mjs ask "even"
 t "exit 2 over --max-candidates"      2 "$(seq 1 5000)" node jevlin.mjs filter q
+
+# init must be run with no key visible at all, or it takes the "already configured" path.
+( unset JEVLIN_API_KEY OPENROUTER_API_KEY JEVLIN_BASE_URL
+  HOME=/tmp/jevlin-initless node jevlin.mjs init </dev/null >/tmp/jevlin-init.txt 2>&1 )
+got=$?
+if [ "$got" = 2 ]; then echo "  ok    init explains itself without a TTY instead of hanging"
+else echo "  FAIL  init exited $got, wanted 2: $(head -1 /tmp/jevlin-init.txt)"; fail=1; fi
+if grep -q "set it by hand" /tmp/jevlin-init.txt 2>/dev/null || grep -qi "by hand" /tmp/jevlin-init.txt; then
+  echo "  ok    init prints the manual steps when it cannot prompt"
+else echo "  FAIL  init gave no manual fallback"; fail=1; fi
+if [ ! -f /tmp/jevlin-initless/.config/jevlin/env ]; then echo "  ok    init writes no key it has not verified"
+else echo "  FAIL  init wrote an unverified key"; fail=1; fi
 
 JEVLIN_BASE_URL=http://127.0.0.1:9 t "exit 3 when the endpoint is unreachable" 3 'x' node jevlin.mjs filter q
 if [ ! -s /tmp/jev-t-out.txt ]; then echo "  ok    degraded prints nothing on stdout"

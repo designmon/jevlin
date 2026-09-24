@@ -15,7 +15,7 @@
  * median first hit at rank 3) and ENUMERATES badly (large changes: recall@10 0.17). Treat
  * its output as a starting point, never as the complete set.
  */
-import { appendFileSync, mkdirSync, readFileSync, existsSync } from 'node:fs'
+import { appendFileSync, mkdirSync, readFileSync, existsSync, writeFileSync, symlinkSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { resolveKey, decide, chunkCandidates, est, CHUNK_TOKEN_BUDGET, MAX_Q, JEVLIN_MODEL } from './core.mjs'
@@ -27,9 +27,11 @@ const DAILY_CAP_USD = Number(process.env.JEVLIN_DAILY_CAP ?? 1)
 const started = Date.now()
 
 const NO_KEY = `no API key found. jevlin uses OpenRouter — bring your own:
+  run:  jevlin init
+
+or set it by hand:
   1. get a key at https://openrouter.ai/keys
-  2. export OPENROUTER_API_KEY=sk-or-...        (or put it in ~/.config/jevlin/env)
-  3. jevlin check`
+  2. export OPENROUTER_API_KEY=sk-or-...        (or put it in ~/.config/jevlin/env)`
 
 // ---------------------------------------------------------------- argv
 
@@ -333,6 +335,99 @@ function cmdStats() {
   process.exit(EX.OK)
 }
 
+
+// ---------------------------------------------------------------- init
+
+/**
+ * Reads a secret without echoing it and without it reaching shell history.
+ * Raw mode delivers chunks, not single characters — a paste arrives all at once.
+ */
+function askHidden(prompt) {
+  return new Promise((resolve) => {
+    const stdin = process.stdin
+    if (!stdin.isTTY) return resolve(null)
+    process.stdout.write(prompt)
+    stdin.setRawMode(true); stdin.resume(); stdin.setEncoding('utf8')
+    let buf = ''
+    const done = (val) => {
+      stdin.setRawMode(false); stdin.pause(); stdin.removeListener('data', onData)
+      process.stdout.write('\n'); resolve(val)
+    }
+    const onData = (chunk) => {
+      for (const ch of chunk) {
+        if (ch === '\r' || ch === '\n') return done(buf)
+        if (ch === '\u0003') { process.stdout.write('\n'); process.exit(130) }   // ctrl-c
+        if (ch === '\u007f' || ch === '\b') { buf = buf.slice(0, -1); continue } // backspace
+        if (ch >= ' ') buf += ch
+      }
+    }
+    stdin.on('data', onData)
+  })
+}
+
+const ask = (prompt) => new Promise((resolve) => {
+  if (!process.stdin.isTTY) return resolve('')
+  process.stdout.write(prompt)
+  process.stdin.resume(); process.stdin.setEncoding('utf8')
+  process.stdin.once('data', (d) => { process.stdin.pause(); resolve(String(d).trim()) })
+})
+
+async function cmdInit() {
+  const KEYFILE = join(homedir(), '.config/jevlin/env')
+  process.stdout.write('\njevlin needs an OpenRouter API key. It is yours, billed to you —\n')
+  process.stdout.write('jevlin never bundles or proxies one.\n\n')
+
+  const existing = resolveKey()
+  if (existing.key) {
+    process.stdout.write(`A key is already being found at: ${existing.source}\n`)
+    const a = await ask('Replace it? [y/N] ')
+    if (!/^y/i.test(a)) { process.stdout.write('Left alone. Run `jevlin check` to test it.\n'); process.exit(EX.OK) }
+  }
+
+  if (!process.stdin.isTTY) {
+    process.stderr.write('jevlin init needs an interactive terminal.\nSet it by hand instead:\n' +
+      `  mkdir -p ${dirname(KEYFILE)}\n  echo 'OPENROUTER_API_KEY=sk-or-...' > ${KEYFILE}\n  chmod 600 ${KEYFILE}\n`)
+    process.exit(EX.USAGE)
+  }
+
+  process.stdout.write('  1. open https://openrouter.ai/keys and create a key\n')
+  process.stdout.write('  2. paste it below (it will not be shown, and will not enter your shell history)\n\n')
+  const key = await askHidden('  key: ')
+  if (!key) { process.stderr.write('\nNothing entered. Nothing written.\n'); process.exit(EX.USAGE) }
+  if (!/^sk-or-/.test(key))
+    process.stdout.write('\n  note: OpenRouter keys usually start with "sk-or-". Continuing anyway.\n')
+
+  process.stdout.write('\n  checking it works…\n')
+  const probe = await decide(key, { probe: true }, { a: { type: 'noul', instructions: 'This is a test.' } }, { timeoutMs: 15_000 })
+  if (!probe.ok) {
+    process.stderr.write(`\n  that key did not work: ${probe.reason} — ${probe.error ?? ''}\n  Nothing was written.\n`)
+    process.exit(EX.DEGRADED)
+  }
+
+  // Only written once the key is known to work, and only readable by this user.
+  mkdirSync(dirname(KEYFILE), { recursive: true, mode: 0o700 })
+  writeFileSync(KEYFILE, `OPENROUTER_API_KEY=${key}\n`, { mode: 0o600 })
+  process.stdout.write(`  ✓ works (${(probe.ms / 1000).toFixed(2)}s) and saved to ${KEYFILE} (chmod 600)\n`)
+
+  // Offer the agent skill to whichever agents are actually installed.
+  const agents = [['Claude Code', join(homedir(), '.claude/skills')], ['Codex', join(homedir(), '.codex/skills')]]
+    .filter(([, d]) => existsSync(d))
+  if (agents.length) {
+    const src = new URL('./skills/jevlin', import.meta.url).pathname
+    process.stdout.write(`\n  Found ${agents.map(([n]) => n).join(' and ')}. Install the jevlin skill so they\n  know when to reach for it?\n`)
+    const a = await ask('  [Y/n] ')
+    if (!/^n/i.test(a)) {
+      for (const [name, dir] of agents) {
+        try { symlinkSync(src, join(dir, 'jevlin'), 'dir'); process.stdout.write(`  ✓ ${name}\n`) }
+        catch (e) { process.stdout.write(`  · ${name}: ${e.code === 'EEXIST' ? 'already installed' : e.message}\n`) }
+      }
+    }
+  }
+
+  process.stdout.write('\nReady. Try it:\n  git ls-files | jevlin filter "relevant to authentication" --top 10\n\n')
+  process.exit(EX.OK)
+}
+
 // ---------------------------------------------------------------- emit
 
 function emit(r, flags = {}) {
@@ -365,6 +460,7 @@ const HELP = `jevlin — fast judgement calls, for coding agents and shells.
   jevlin filter <instructions>     candidates on stdin (one per line), the ones that qualify on stdout
   jevlin ask <question>            stdin is one blob; THE EXIT CODE IS THE ANSWER (0 yes, 1 no)
   jevlin raw                       stdin {"state":…,"questions":…} straight through; full JSON out
+  jevlin init                      set up your API key, and the agent skill
   jevlin check                     resolve the key and make one trivial call
   jevlin stats                     what it has cost and how well it has worked
 
@@ -409,7 +505,7 @@ const KNOWN = {
   common: ['json', 'quiet', 'q', 'timeout', 'key', 'help', 'compare'],
   filter: ['min', 'top', 'all', 'rank', 'scores', 'peek', 'context', 'context-file', 'none-ok', 'max-candidates', 'concurrency', 'sep'],
   ask: ['min', 'p'],
-  raw: [], check: [], stats: [],
+  raw: [], check: [], stats: [], init: [],
 }
 
 const { flags, rest } = parseArgs(process.argv.slice(2))
@@ -426,9 +522,10 @@ try {
   else if (cmd === 'rank') await cmdFilter(arg, { ...flags, rank: true, scores: true })
   else if (cmd === 'ask') await cmdAsk(arg, flags)
   else if (cmd === 'raw') await cmdRaw(flags)
+  else if (cmd === 'init') await cmdInit()
   else if (cmd === 'check') await cmdCheck(flags)
   else if (cmd === 'stats') cmdStats()
-  else die(`unknown command "${cmd}" (try: filter, ask, raw, check, stats)`)
+  else die(`unknown command "${cmd}" (try: init, filter, ask, raw, check, stats)`)
 } catch (err) {
   // Nothing reaches the user as a stack trace, and a crash is a degraded run, not a wrong answer.
   process.stderr.write(`jevlin: ${String(err?.message ?? err).slice(0, 200)}\nreason=internal\n`)

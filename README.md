@@ -26,30 +26,43 @@ won't hand you the whole field. The numbers below say exactly how far that goes.
 npm install -g jevlin
 ```
 
-**Bring your own key.** `jevlin` calls OpenRouter with *your* credentials and never bundles or
-phones home to anyone else's:
-
 ```bash
-export OPENROUTER_API_KEY=sk-or-...     # get one at https://openrouter.ai/keys
-# or, to keep it out of your shell profile:
-mkdir -p ~/.config/jevlin && echo 'OPENROUTER_API_KEY=sk-or-...' > ~/.config/jevlin/env
-
-jevlin check    # confirms the key and prints which source it came from
+jevlin init
 ```
 
-The key is read at runtime from, in order: `--key`, `$JEVLIN_API_KEY`, `$OPENROUTER_API_KEY`,
-`~/.config/jevlin/env`, then `./.dev.vars`, `./.env.local`, `./.env`. The source is always named
-on the receipt, so a stray key in the repo you happen to be in can never be used silently.
+`init` walks you through it: it points you at https://openrouter.ai/keys, takes your key
+without echoing it or putting it in your shell history, **checks it works before writing
+anything**, saves it to `~/.config/jevlin/env` with `chmod 600`, and offers to install the
+agent skill into Claude Code and Codex if it finds them.
 
-To teach Claude Code and Codex when to reach for it:
+**Bring your own key.** jevlin calls OpenRouter with *your* credentials, billed to you, and
+never bundles or proxies anyone else's.
+
+Prefer to do it by hand:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/designmon/jevlin/main/install.sh | bash
-# or, from a clone: ./install.sh
+export OPENROUTER_API_KEY=sk-or-...
 ```
 
-That symlinks the skill into `~/.claude/skills` and `~/.codex/skills` if they exist. Nothing
-else is touched.
+```bash
+jevlin check
+```
+
+The key is read at runtime from, in order: `--key`, `$JEVLIN_API_KEY`,
+`$OPENROUTER_API_KEY`, `~/.config/jevlin/env`, then `./.dev.vars`, `./.env.local`, `./.env`.
+The source is always named on the receipt, so a stray key in whichever repo you happen to be
+in can never be used silently.
+
+### What leaves your machine
+
+Your key goes in the `Authorization` header and nowhere else — never in a request body, never
+in the local log. There is exactly one network call in the whole package, to
+`openrouter.ai`; no analytics, no telemetry.
+
+What *is* sent is your instruction and the candidate lines you pipe in — file paths for
+`git ls-files`, and actual file contents if you use `--peek`. On a work machine with
+proprietary code, that is worth checking against your employer's policy before piping a repo
+through it.
 
 ## What it is actually good at
 
