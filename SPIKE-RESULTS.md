@@ -1,4 +1,62 @@
-# Phase 0 results — measured 2026-09-23
+# Measured results
+
+Two benchmarks. The first is on real work and is the one to believe. The second is the one
+the author designed before shipping, and it overstated the tool by four times — it is kept
+below deliberately, as a worked example of how a benchmark flatters the thing it tests.
+
+---
+
+## Real tasks from real sessions (2026-09-24) — believe this one
+
+33 genuine "go and find the relevant code" tasks, taken from one developer's actual agent
+sessions over 30 days. Ground truth is the files that session went on to edit after the
+exploration. Candidates are every tracked file in the repo (130–210 files).
+
+| | synthetic benchmark (below) | **real tasks** |
+|---|---|---|
+| recall@10 | 0.61 | **0.15** |
+| precision@10 | — | **0.14** |
+| at least one correct file in the top 10 | — | **58%** |
+| median rank of the first correct file | 3 | **5** |
+
+**It surfaces roughly one in seven of the files the work actually touched, and points
+somewhere useful a bit over half the time.** That is not good enough to replace a search.
+
+Split by task size, and note this *inverts* the synthetic finding:
+
+| task shape | recall@10 | one correct file in top 10 |
+|---|---|---|
+| small (≤3 files touched), n=11 | 0.18 | 36% |
+| enumeration (≥6 files touched), n=21 | 0.12 | 67% |
+
+The higher hit-rate on big tasks is arithmetic, not skill — with more target files you are
+likelier to clip one by chance.
+
+### Why the synthetic benchmark was wrong
+
+It used **commit messages** as the task. A commit message is written after the work and
+describes it accurately, often naming the very concepts in the filenames. Real prompts are
+terse and oblique — *"Rounds client UI"*, *"Phase 3 client: instance ids"*. Far less signal.
+If you benchmark a retrieval tool with hindsight-written queries, you will overestimate it.
+
+### Caveats, stated fairly — none of which rescue the number
+
+- Ground truth is "files edited after the exploration", which includes incidental edits.
+- The repositories moved between the sessions and the measurement; files that no longer
+  exist were excluded from the gold sets.
+- A person writing a query deliberately might phrase it better than an agent's terse label.
+
+Being generous on all three does not get near 0.5.
+
+### Reproduce it on your own work
+
+`scripts/bench-tasks.mjs` takes a JSON array of `{repo, task, gold}` and reports the same
+table. Build that file from whatever ground truth you have — commits, tickets, or your own
+agent history — and see whether it does better for you than it did here.
+
+---
+
+## Synthetic benchmark (2026-09-23) — the one that was wrong
 
 35 runs over 24 real commits in two private repositories (134 and 198 tracked files).
 Task = commit message; gold = the pre-existing files that commit changed; candidates = every

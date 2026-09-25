@@ -66,22 +66,29 @@ through it.
 
 ## What it is actually good at
 
-Benchmarked against a lexical-overlap baseline on 24 real commits (`SPIKE-RESULTS.md`), with
-half the tasks hand-rewritten so the commit message couldn't give the answer away:
+**Measured on real work, it is weak.** 33 genuine "find the relevant code" tasks from a
+developer's own agent sessions, ground truth being the files that work went on to edit:
 
-| | baseline | jevlin |
-|---|---|---|
-| a relevant file in the top 10 | 0.19 | **0.61** |
-| small change (≤3 files), top 10 | 0.25 | **0.77** |
-| large change (≥6 files), top 10 | 0.11 | **0.17** |
+| | jevlin |
+|---|---|
+| recall@10 | **0.15** |
+| precision@10 | **0.14** |
+| at least one correct file in the top 10 | **58%** |
 
-**It locates; it does not enumerate.** It reliably puts *a* relevant file in the top 3–5 of
-150. It does **not** recover the full set of files a large change touches.
+It surfaces roughly **one in seven** of the files the work actually touched, and points
+somewhere useful a bit over half the time.
 
-> Treat the output as where to start looking, never as the complete answer.
+An earlier synthetic benchmark in `SPIKE-RESULTS.md` reported 0.61 — it used commit messages
+as queries, which are written *after* the work and name the very concepts in the filenames.
+That overstated the tool by four times. Both numbers are published there, because the gap
+between them is the most useful thing this repository contains.
 
-And the rule that keeps it honest: **if `grep` can express the question, use `grep`** — it is
-faster, exact, and never wrong. Below ~30 candidates, just read them.
+**So: treat any output as a hint to check, never as an answer.** And the rule that still
+holds — **if `grep` can express the question, use `grep`**: faster, exact, never wrong.
+Below ~30 candidates, just read them.
+
+Where it does hold up, on the same measurements: **`jevlin ask`** over a blob of text —
+0.98 on a passing build, 0.01 on a failing one, in under half a second.
 
 ## Commands
 

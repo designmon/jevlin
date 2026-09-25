@@ -1,7 +1,7 @@
 {
   "name": "jevlin",
-  "version": "0.1.6",
-  "description": "Jev's javelin \u2014 fast judgement calls for coding agents. Narrows hundreds of candidates to the few that matter, in one round trip.",
+  "version": "0.2.0",
+  "description": "Fast yes/no judgement calls for coding agents. Honest about what it can and cannot do \u2014 see the measured results before installing.",
   "type": "module",
   "bin": {
     "jevlin": "jevlin.mjs"
